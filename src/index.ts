@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * PostgreSQL 数据库创建器 MCP 服务器
+ * 数据库创建器 MCP 服务器，可以创建多种数据库，包括postgresql、mysql、redis、mongodb、kafka、milvus
  * 
  * 配置示例:
  * {
@@ -131,7 +131,7 @@ try {
   console.error('加载 kubeconfig 失败, 将使用默认配置:', err);
   // 使用默认配置
   kubeConfig = {
-    apiServer: "https://192.168.10.35.nip.io:6443",
+    apiServer: "",
     token: "eyJhbGciOiJSUzI1NiIsImtpZCI6Ii1lbUFrRmNVdmkzemlvYUFtWHpEV3FualNXU2ZZY2F6SlZieGk3TXA5NzgifQ.eyJhdWQiOlsiaHR0cHM6Ly9rdWJlcm5ldGVzLmRlZmF1bHQuc3ZjLmNsdXN0ZXIubG9jYWwiXSwiZXhwIjoxNzQwNDcxMDE0LCJpYXQiOjE3NDA0Njc0MTQsImlzcyI6Imh0dHBzOi8va3ViZXJuZXRlcy5kZWZhdWx0LnN2Yy5jbHVzdGVyLmxvY2FsIiwia3ViZXJuZXRlcy5pbyI6eyJuYW1lc3BhY2UiOiJucy1rdnM0YmI5ayIsInNlcnZpY2VhY2NvdW50Ijp7Im5hbWUiOiJ0ZXN0LWRiIiwidWlkIjoiZTc2MTE0NzMtODgyOC00MGYzLWEzODItMjM2YmI0NGIyNzg2In19LCJuYmYiOjE3NDA0Njc0MTQsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpucy1rdnM0YmI5azp0ZXN0LWRiIn0.pCaVLqdXaDwW2897brdyqd_13J-4dXsFJJaVJn34trQR9yp6ILjyv8mnbB6lVvcxAQb-KVzh0ZNd8mB7xAN7PapwZcH4VMGQitN8ZbK18wEc2uHXu-_J5Z258w1kNzah1UKM8MEe6LyWY9FPno_xJrXIveidXcEOnMNDp2GUk3vLGTJXil5_MH4kgNprjsLjHQZ6dLZX5gqkJc4rCqadjquC1X89va9VXUIS25PJtig3zV3KWn1pSSBMGkQw6O_3ZkfntRLyAEo4xMIqiTigBUjUpojYQlSUM2GN1hKSjWKoRjmXFzGaf49Sucj83tupWX2W22K6nzPEjH6gju2mcw",
     namespace: "default"
   };
@@ -151,40 +151,59 @@ const server = new Server(
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
+const commonProperties = {
+    name: { type: "string", description: "数据库集群名称" },
+    namespace: { type: "string", description: "部署的命名空间", default: kubeConfig.namespace },
+    token: { type: "string", description: "Kubernetes API认证令牌（可选，默认使用kubeconfig中的令牌）" },
+    cpu_limit: { type: "string", description: "CPU资源限制", default: "1000m" },
+    memory_limit: { type: "string", description: "内存资源限制", default: "1024Mi" },
+    cpu_request: { type: "string", description: "CPU资源请求", default: "100m" },
+    memory_request: { type: "string", description: "内存资源请求", default: "102Mi" },
+    storage: { type: "string", description: "存储大小", default: "3Gi" }
+  };
+
   return {
     tools: [
       {
-        name: "create_postgresql",
-        description: "创建新的PostgreSQL数据库集群。",
+        name: "create_database",
+        description: "创建新的数据库集群。",
         inputSchema: {
           type: "object",
           properties: {
-            name: { type: "string", description: "数据库集群名称" },
-            namespace: { type: "string", description: "部署的命名空间", default: kubeConfig.namespace },
-            token: { type: "string", description: "Kubernetes API认证令牌（可选，默认使用kubeconfig中的令牌）" },
-            cpu_limit: { type: "string", description: "CPU资源限制", default: "1000m" },
-            memory_limit: { type: "string", description: "内存资源限制", default: "1024Mi" },
-            cpu_request: { type: "string", description: "CPU资源请求", default: "100m" },
-            memory_request: { type: "string", description: "内存资源请求", default: "102Mi" },
-            storage: { type: "string", description: "存储大小", default: "3Gi" }
+            ...commonProperties,
+            type: { 
+              type: "string", 
+              description: "数据库类型", 
+              enum: ["postgresql", "mysql", "redis", "mongodb", "kafka", "milvus"],
+              default: "postgresql"
+            },
+            version: {
+              type: "string",
+              description: "数据库版本，如果不指定则根据数据库类型使用默认版本"
+            }
           },
-          required: ["name"]
+          required: ["name", "type"]
         }
       },
       {
-        name: "get_postgresql_clusters",
-        description: "获取指定命名空间中的PostgreSQL集群列表。",
+        name: "get_database_clusters",
+        description: "获取指定命名空间中的数据库集群列表。",
         inputSchema: {
           type: "object",
           properties: {
             namespace: { type: "string", description: "要查询的命名空间", default: kubeConfig.namespace },
-            token: { type: "string", description: "Kubernetes API认证令牌（可选，默认使用kubeconfig中的令牌）" }
+            token: { type: "string", description: "Kubernetes API认证令牌（可选，默认使用kubeconfig中的令牌）" },
+            type: { 
+              type: "string", 
+              description: "数据库类型（可选）", 
+              enum: ["postgresql", "mysql", "redis"]
+            }
           }
         }
       },
       {
-        name: "delete_postgresql_cluster",
-        description: "删除指定的PostgreSQL集群。",
+        name: "delete_database_cluster",
+        description: "删除指定的数据库集群。",
         inputSchema: {
           type: "object",
           properties: {
@@ -200,9 +219,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name === "create_postgresql") {
+  if (request.params.name === "create_database") {
     const { 
-      name, 
+      name,
+      type = "postgresql",
+      version: userVersion,
       namespace = kubeConfig.namespace, 
       token = "",
       cpu_limit = "1000m", 
@@ -211,6 +232,61 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       memory_request = "102Mi",
       storage = "3Gi"
     } = request.params.arguments as any;
+
+    // 默认版本配置
+    const defaultVersions = {
+      postgresql: "14.8.0",
+      mysql: "8.0.30-1",
+      redis: "7.0.6",
+      mongodb: "6.0",
+      kafka: "3.3.2",
+      milvus: "2.4.5"
+    };
+
+    // 使用用户指定的版本或默认版本
+    const version = userVersion || defaultVersions[type as keyof typeof defaultVersions];
+
+    // 数据库配置映射
+    const dbConfigs = {
+      postgresql: {
+        definition: "postgresql",
+        version: `postgresql-${version}`,
+        component: "postgresql"
+      },
+      mysql: {
+        definition: "apecloud-mysql",
+        version: `ac-mysql-${version}`,
+        component: "mysql"
+      },
+      redis: {
+        definition: "redis",
+        version: `redis-${version}`,
+        component: "redis"
+      },
+      mongodb: {
+        definition: "mongodb",
+        version: `mongodb-${version}`,
+        component: "mongodb"
+      },
+      kafka: {
+        definition: "kafka",
+        version: `kafka-${version}`,
+        component: "kafka"
+      },
+      milvus: {
+        definition: "milvus",
+        version: `milvus-${version}`,
+        component: "milvus"
+      }
+    };
+
+    const dbConfig = dbConfigs[type as keyof typeof dbConfigs];
+    if (!dbConfig) {
+      return {
+        content: [{ type: "text", text: `不支持的数据库类型: ${type}` }],
+        isError: true,
+      };
+    }
 
     try {
       // 创建 ServiceAccount
@@ -286,7 +362,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // 等待一会儿让 ServiceAccount 的 token 生成
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // 修改 PostgreSQL 集群配置中的 serviceAccountName
+      // 修改数据库集群配置
       const payload = {
         "apiVersion": "apps.kubeblocks.io/v1alpha1",
         "kind": "Cluster",
@@ -295,8 +371,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             "cluster.kubeblocks.io/finalizer"
           ],
           "labels": {
-            "clusterdefinition.kubeblocks.io/name": "postgresql",
-            "clusterversion.kubeblocks.io/name": "postgresql-14.8.0",
+            "clusterdefinition.kubeblocks.io/name": dbConfig.definition,
+            "clusterversion.kubeblocks.io/name": dbConfig.version,
             "sealos-db-provider-cr": name
           },
           "name": name,
@@ -311,13 +387,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               "kubernetes.io/hostname"
             ]
           },
-          "clusterDefinitionRef": "postgresql",
-          "clusterVersionRef": "postgresql-14.8.0",
+          "clusterDefinitionRef": dbConfig.definition,
+          "clusterVersionRef": dbConfig.version,
           "componentSpecs": [
             {
-              "componentDefRef": "postgresql",
+              "componentDefRef": dbConfig.component,
               "monitor": true,
-              "name": "postgresql",
+              "name": dbConfig.component,
               "replicas": 1,
               "resources": {
                 "limits": {
@@ -366,19 +442,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       if ([200, 201, 202].includes(response.status)) {
         return {
-          content: [{ type: "text", text: `成功创建PostgreSQL集群 '${name}'，响应状态码: ${response.status}` }],
+          content: [{ type: "text", text: `成功创建数据库集群 '${name}'，响应状态码: ${response.status}` }],
           isError: false,
         };
       } else {
         return {
-          content: [{ type: "text", text: `创建PostgreSQL集群失败，状态码: ${response.status}，错误信息: ${JSON.stringify(response.data)}` }],
+          content: [{ type: "text", text: `创建数据库集群失败，状态码: ${response.status}，错误信息: ${JSON.stringify(response.data)}` }],
           isError: true,
         };
       }
     } catch (e) {
       if (axios.isAxiosError(e) && e.response) {
         return {
-          content: [{ type: "text", text: `创建PostgreSQL集群失败，状态码: ${e.response.status}，错误信息: ${JSON.stringify(e.response.data)}` }],
+          content: [{ type: "text", text: `创建数据库集群失败，状态码: ${e.response.status}，错误信息: ${JSON.stringify(e.response.data)}` }],
           isError: true,
         };
       }
@@ -389,20 +465,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
   }
 
-  else if (request.params.name === "get_postgresql_clusters") {
+  else if (request.params.name === "get_database_clusters") {
     const { 
       namespace = kubeConfig.namespace, 
-      token = "" 
+      token = "",
+      type = "postgresql"
     } = request.params.arguments as any;
 
-    // API端点URL
     const api_endpoint = `${kubeConfig.apiServer}/apis/apps.kubeblocks.io/v1alpha1/namespaces/${namespace}/clusters`;
-
-    // 添加认证令牌到请求头
     const headers = { ...HEADERS, "Authorization": `Bearer ${token || kubeConfig.token}` };
 
     try {
-      // 发送GET请求到Kubernetes API
       const response = await axios.get(api_endpoint, {
         headers: headers,
         httpsAgent
@@ -412,17 +485,53 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const clusters = response.data;
         const items = clusters.items || [];
 
-        // 格式化输出集群信息
-        let result = `在命名空间 '${namespace}' 中找到 ${items.length} 个PostgreSQL集群:\n\n`;
+        let result = `在命名空间 '${namespace}' 中找到 ${items.length} 个数据库集群:\n\n`;
 
         for (const cluster of items) {
           const name = cluster.metadata?.name || '未知';
           const status = cluster.status?.phase || '未知';
           const created = cluster.metadata?.creationTimestamp || '未知';
-
+          const dbType = cluster.metadata?.labels?.['clusterdefinition.kubeblocks.io/name'] || '未知';
+          const dbVersion = cluster.metadata?.labels?.['clusterversion.kubeblocks.io/name'] || '未知';
+          
+          // 获取资源配置信息
+          const componentSpecs = cluster.spec?.componentSpecs || [];
+          const mainComponent = componentSpecs[0] || {};
+          
           result += `- 集群名称: ${name}\n`;
+          result += `  数据库类型: ${dbType}\n`;
+          result += `  数据库版本: ${dbVersion}\n`;
           result += `  状态: ${status}\n`;
-          result += `  创建时间: ${created}\n\n`;
+          result += `  创建时间: ${created}\n`;
+          
+          // 添加资源配置信息
+          if (mainComponent.resources) {
+            const resources = mainComponent.resources;
+            result += `  资源配置:\n`;
+            result += `    CPU 限制: ${resources.limits?.cpu || '未设置'}\n`;
+            result += `    内存限制: ${resources.limits?.memory || '未设置'}\n`;
+            result += `    CPU 请求: ${resources.requests?.cpu || '未设置'}\n`;
+            result += `    内存请求: ${resources.requests?.memory || '未设置'}\n`;
+          }
+
+          // 添加存储信息
+          const volumeTemplates = mainComponent.volumeClaimTemplates || [];
+          if (volumeTemplates.length > 0) {
+            const dataVolume = volumeTemplates.find((v: { name: string }) => v.name === 'data');
+            if (dataVolume) {
+              result += `  存储配置:\n`;
+              result += `    存储大小: ${dataVolume.spec?.resources?.requests?.storage || '未设置'}\n`;
+              result += `    访问模式: ${dataVolume.spec?.accessModes?.join(', ') || '未设置'}\n`;
+            }
+          }
+
+          // 添加副本信息
+          result += `  副本数量: ${mainComponent.replicas || '未知'}\n`;
+
+          // 添加服务账号信息
+          result += `  服务账号: ${mainComponent.serviceAccountName || '默认'}\n`;
+
+          result += '\n';
         }
 
         return {
@@ -431,14 +540,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       } else {
         return {
-          content: [{ type: "text", text: `获取PostgreSQL集群列表失败，状态码: ${response.status}，错误信息: ${JSON.stringify(response.data)}` }],
+          content: [{ type: "text", text: `获取数据库集群列表失败，状态码: ${response.status}，错误信息: ${JSON.stringify(response.data)}` }],
           isError: true,
         };
       }
     } catch (e) {
       if (axios.isAxiosError(e) && e.response) {
         return {
-          content: [{ type: "text", text: `获取PostgreSQL集群列表失败，状态码: ${e.response.status}，错误信息: ${JSON.stringify(e.response.data)}` }],
+          content: [{ type: "text", text: `获取数据库集群列表失败，状态码: ${e.response.status}，错误信息: ${JSON.stringify(e.response.data)}` }],
           isError: true,
         };
       }
@@ -449,7 +558,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
   }
 
-  else if (request.params.name === "delete_postgresql_cluster") {
+  else if (request.params.name === "delete_database_cluster") {
     const { 
       name, 
       namespace = kubeConfig.namespace, 
@@ -471,19 +580,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       if ([200, 202, 204].includes(response.status)) {
         return {
-          content: [{ type: "text", text: `成功删除PostgreSQL集群 '${name}'，响应状态码: ${response.status}` }],
+          content: [{ type: "text", text: `成功删除数据库集群 '${name}'，响应状态码: ${response.status}` }],
           isError: false,
         };
       } else {
         return {
-          content: [{ type: "text", text: `删除PostgreSQL集群失败，状态码: ${response.status}，错误信息: ${JSON.stringify(response.data)}` }],
+          content: [{ type: "text", text: `删除数据库集群失败，状态码: ${response.status}，错误信息: ${JSON.stringify(response.data)}` }],
           isError: true,
         };
       }
     } catch (e) {
       if (axios.isAxiosError(e) && e.response) {
         return {
-          content: [{ type: "text", text: `删除PostgreSQL集群失败，状态码: ${e.response.status}，错误信息: ${JSON.stringify(e.response.data)}` }],
+          content: [{ type: "text", text: `删除数据库集群失败，状态码: ${e.response.status}，错误信息: ${JSON.stringify(e.response.data)}` }],
           isError: true,
         };
       }
